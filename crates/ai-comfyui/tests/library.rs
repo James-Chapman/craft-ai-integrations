@@ -454,7 +454,10 @@ fn remove_stays_quiet_when_the_directory_cannot_be_read() {
     lib.remove("anything").unwrap();
 }
 
-#[cfg(target_family = "unix")]
+// Linux only: the premise is a name the filesystem accepts but `to_str` refuses, and ext4 is
+// byte-transparent while macOS (APFS) refuses to create a non-UTF-8 name at all (EILSEQ), so
+// the scenario cannot be set up there. Windows is excluded by the byte-level OsString import.
+#[cfg(target_os = "linux")]
 #[test]
 fn remove_reaches_a_file_whose_name_is_not_utf8() {
     use std::ffi::OsString;
