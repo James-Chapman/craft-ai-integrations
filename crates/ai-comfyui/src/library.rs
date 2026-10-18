@@ -367,6 +367,15 @@ impl WorkflowLibrary {
         // Scan before writing: a library that cannot be scanned is not one to change, and the
         // scan's failure must not hide that the previous file was never replaced.
         let stale = self.files_storing(&id)?;
+        // The destination's name is derived from `id`, but names do not confer ownership — a
+        // hand-edited or launcher-written file may store a different workflow under that name.
+        // Refuse rather than overwrite it; a destination the scan does identify is replaced.
+        if path.exists() && !stale.iter().any(|existing| existing == &path) {
+            return Err(AiError::new(
+                ErrorKind::Internal,
+                "the destination file stores another workflow",
+            ));
+        }
         fs::write(&path, &json)
             .map_err(|_| AiError::new(ErrorKind::Internal, "could not write the workflow file"))?;
         // One workflow per id, whatever file it arrived in. Damaged and foreign files that

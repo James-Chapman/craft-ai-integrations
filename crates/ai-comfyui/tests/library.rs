@@ -468,6 +468,49 @@ fn remove_reaches_a_file_whose_name_is_not_utf8() {
 }
 
 #[test]
+fn save_refuses_a_destination_storing_another_workflow() {
+    let (lib, dir) = library();
+    lib.save(&spec("a")).unwrap();
+    // The id inside the destination file is hand-edited to another workflow's; the file name
+    // stays derived from `a`, so writing to it would overwrite the other workflow.
+    let stored: Vec<PathBuf> = fs::read_dir(dir.path().join("workflows"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    assert_eq!(stored.len(), 1);
+    fs::write(
+        &stored[0],
+        json!({
+            "id":"b",
+            "capability":"image.generate",
+            "graph":graph("other"),
+            "prompt":{"node":"1","class_type":"CLIPTextEncode","input":"text"},
+            "output_node":"2"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        lib.load().unwrap().len(),
+        1,
+        "the hand-edited workflow does not load"
+    );
+    let err = lib.save(&spec("a")).unwrap_err();
+    assert!(err.message.contains("another workflow"), "{}", err.message);
+    // The hand-edited workflow survives, and remove("a") does not reach it either.
+    let ids: Vec<String> = lib
+        .load()
+        .unwrap()
+        .iter()
+        .map(|w| w.id().as_str().to_owned())
+        .collect();
+    assert_eq!(ids, ["b".to_owned()]);
+    lib.remove("a").unwrap();
+    assert_eq!(lib.load().unwrap().len(), 1);
+}
+
+#[test]
 fn a_spec_with_an_unknown_capability_is_refused() {
     let err = WorkflowSpec::import(
         "weird",
