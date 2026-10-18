@@ -36,7 +36,7 @@ use craft_ai_core::{AiError, ErrorKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 /// Largest workflow file accepted, in bytes. A graph is JSON text; a few MiB is generous.
@@ -373,11 +373,19 @@ impl WorkflowLibrary {
         if path.exists() && !stale.iter().any(|existing| existing == &path) {
             return Err(AiError::new(
                 ErrorKind::Internal,
-                "the destination file stores another workflow",
+                "the destination file stores another workflow or cannot be read",
             ));
         }
-        fs::write(&path, &json)
-            .map_err(|_| AiError::new(ErrorKind::Internal, "could not write the workflow file"))?;
+        // Write the whole file before it becomes the workflow: a torn write to the destination
+        // would leave JSON no scan can identify, wedging that id until the file is deleted by
+        // hand. The temp file has no `json` extension, so no scan ever sees it. Same shape as
+        // `ai-native`'s atomic store writes, flushed before the rename.
+        let write_err = || AiError::new(ErrorKind::Internal, "could not write the workflow file");
+        let mut tmp = tempfile::NamedTempFile::new_in(&self.dir).map_err(|_| write_err())?;
+        tmp.write_all(&json)
+            .and_then(|()| tmp.as_file().sync_all())
+            .map_err(|_| write_err())?;
+        tmp.persist(&path).map_err(|_| write_err())?;
         // One workflow per id, whatever file it arrived in. Damaged and foreign files that
         // cannot be parsed are left alone.
         for stale in stale {

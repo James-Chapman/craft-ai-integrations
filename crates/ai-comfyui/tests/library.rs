@@ -498,6 +498,12 @@ fn save_refuses_a_destination_storing_another_workflow() {
     );
     let err = lib.save(&spec("a")).unwrap_err();
     assert!(err.message.contains("another workflow"), "{}", err.message);
+    // The refusal path writes nothing at all: no temporary file is left behind either.
+    let entries = fs::read_dir(dir.path().join("workflows"))
+        .unwrap()
+        .flatten()
+        .count();
+    assert_eq!(entries, 1, "the refusal left {entries} entries behind");
     // The hand-edited workflow survives, and remove("a") does not reach it either.
     let ids: Vec<String> = lib
         .load()
