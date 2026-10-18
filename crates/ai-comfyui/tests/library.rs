@@ -325,6 +325,80 @@ fn remove_only_reaches_files_inside_the_library() {
 }
 
 #[test]
+fn a_legacy_file_named_after_the_id_is_replaced_by_a_save() {
+    let (lib, dir) = library();
+    // A file from before ids stopped being file names: the id inside, the id as the name.
+    let legacy = path_in(&dir, "legacy.json");
+    fs::write(
+        &legacy,
+        json!({
+            "id":"legacy",
+            "capability":"image.generate",
+            "graph":graph("original"),
+            "prompt":{"node":"1","class_type":"CLIPTextEncode","input":"text"},
+            "output_node":"2"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    lib.save(&spec("legacy")).unwrap();
+    // One workflow per id: the legacy file must not survive as a second copy.
+    let stored: Vec<String> = fs::read_dir(dir.path().join("workflows"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(stored.len(), 1, "save left more than one file: {stored:?}");
+    assert!(!legacy.exists(), "the legacy file survived the save");
+    assert_eq!(lib.load().unwrap().len(), 1);
+}
+
+#[test]
+fn remove_reaches_a_legacy_file_named_after_the_id() {
+    let (lib, dir) = library();
+    let legacy = path_in(&dir, "legacy.json");
+    fs::write(
+        &legacy,
+        json!({
+            "id":"legacy",
+            "capability":"image.generate",
+            "graph":graph("original"),
+            "prompt":{"node":"1","class_type":"CLIPTextEncode","input":"text"},
+            "output_node":"2"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        lib.load().unwrap().len(),
+        1,
+        "the legacy file does not load"
+    );
+    lib.remove("legacy").unwrap();
+    assert!(!legacy.exists(), "remove missed the legacy file");
+    assert!(lib.load().unwrap().is_empty());
+}
+
+#[test]
+fn ids_that_share_a_cleaned_prefix_stay_distinct() {
+    let (lib, _dir) = library();
+    // Both ids clean to the same 40 characters; only the hash tells the files apart.
+    let long = "x".repeat(45);
+    let other = format!("{}y", "x".repeat(44));
+    lib.save(&spec(&long)).unwrap();
+    lib.save(&spec(&other)).unwrap();
+    let ids: Vec<String> = lib
+        .load()
+        .unwrap()
+        .iter()
+        .map(|w| w.id().as_str().to_owned())
+        .collect();
+    assert!(ids.contains(&long), "the first long id was lost");
+    assert!(ids.contains(&other), "the second long id was lost");
+    assert_eq!(ids.len(), 2);
+}
+
+#[test]
 fn a_spec_with_an_unknown_capability_is_refused() {
     let err = WorkflowSpec::import(
         "weird",

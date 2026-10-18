@@ -357,7 +357,8 @@ impl WorkflowLibrary {
         Ok(id)
     }
 
-    /// Writes one workflow file. The id becomes the file name.
+    /// Writes one workflow file. The id becomes the file name. A file from before ids stopped
+    /// being file names is replaced, not left as a second copy of the same workflow.
     pub fn save(&self, spec: &WorkflowSpec) -> Result<(), AiError> {
         let id = craft_ai_core::ModelId::new(spec.id.trim())
             .map_err(|_| AiError::new(ErrorKind::InvalidRequest, "workflow id is not usable"))?
@@ -367,25 +368,63 @@ impl WorkflowLibrary {
             .map_err(|_| AiError::new(ErrorKind::Internal, "could not encode the workflow"))?;
         let path = self.dir.join(file_name(&id)).with_extension(EXTENSION);
         fs::write(&path, &json)
-            .map_err(|_| AiError::new(ErrorKind::Internal, "could not write the workflow file"))
+            .map_err(|_| AiError::new(ErrorKind::Internal, "could not write the workflow file"))?;
+        // One workflow per id, whatever file it arrived in. Damaged and foreign files that
+        // cannot be parsed are left alone.
+        for stale in self.files_storing(&id) {
+            if stale != path && fs::remove_file(&stale).is_err() {
+                return Err(AiError::new(
+                    ErrorKind::Internal,
+                    "could not remove the workflow's previous file",
+                ));
+            }
+        }
+        Ok(())
     }
 
-    /// Deletes one workflow file. Missing is fine.
+    /// Deletes one workflow file, whatever name it was stored under. Missing is fine.
     pub fn remove(&self, id: &str) -> Result<(), AiError> {
         let id = craft_ai_core::ModelId::new(id)
             .map_err(|_| AiError::new(ErrorKind::InvalidRequest, "workflow id is not usable"))?
             .as_str()
             .to_owned();
-        let _ = fs::remove_file(self.dir.join(file_name(&id)).with_extension(EXTENSION));
+        for path in self.files_storing(&id) {
+            let _ = fs::remove_file(&path);
+        }
         Ok(())
+    }
+
+    /// Every file in the library that stores the workflow `id`, whatever its file name —
+    /// including files named `{id}.json` before ids stopped being file names. Paths are only
+    /// ever taken from the directory listing, never built from the id.
+    fn files_storing(&self, id: &str) -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+        let Ok(entries) = fs::read_dir(&self.dir) else {
+            return paths;
+        };
+        for path in entries.flatten().map(|e| e.path()) {
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let Ok(bytes) = read_bounded(&path) else {
+                continue;
+            };
+            if let Ok(spec) = WorkflowSpec::parse(&bytes, Some(stem))
+                && spec.id.trim() == id
+            {
+                paths.push(path);
+            }
+        }
+        paths
     }
 }
 
 /// The file name a workflow id is stored under. A model id may contain `/`, `:` and `.` and is
 /// not a file name; the readable part is cleaned to characters that cannot escape the library
-/// directory, and a hash of the exact id is appended so ids that clean alike (such as `a/b` and
-/// `a.b`) stay distinct. The id itself travels inside the file. Same shape as
-/// `ai-native`'s consent `file_name`.
+/// directory, and a 64-bit hash of the exact id is appended so ids that clean alike (such as
+/// `a/b` and `a.b`, or two long ids sharing the first 40 cleaned characters) stay distinct —
+/// and cannot be collided on purpose by whoever picks a shared workflow's id. The id itself
+/// travels inside the file. Same shape as `ai-native`'s consent `file_name`.
 fn file_name(id: &str) -> String {
     let clean: String = id
         .chars()
@@ -398,11 +437,11 @@ fn file_name(id: &str) -> String {
         })
         .take(40)
         .collect();
-    let mut hash: u32 = 0x811c_9dc5;
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for b in id.bytes() {
-        hash = (hash ^ u32::from(b)).wrapping_mul(0x0100_0193);
+        hash = (hash ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3);
     }
-    format!("{clean}-{hash:08x}")
+    format!("{clean}-{hash:016x}")
 }
 
 fn read_bounded(path: &Path) -> Result<Vec<u8>, AiError> {
