@@ -321,14 +321,11 @@ impl WorkflowLibrary {
         let mut paths: Vec<PathBuf> = entries
             .flatten()
             .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|e| e == EXTENSION))
+            .filter(|p| is_workflow_file(p))
             .collect();
         paths.sort();
         for path in paths {
-            let stem = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("workflow");
+            let stem = workflow_stem(&path);
             if let Ok(bytes) = read_bounded(&path)
                 && let Ok(spec) = WorkflowSpec::parse(&bytes, Some(stem))
             {
@@ -403,19 +400,19 @@ impl WorkflowLibrary {
 
     /// Every `json` file in the library that stores the workflow `id`, whatever its file name —
     /// including files named `{id}.json` before ids stopped being file names. Paths are only
-    /// ever taken from the directory listing, never built from the id.
+    /// ever taken from the directory listing, never built from the id. What counts as a stored
+    /// file is decided by the same helpers `load_specs` uses, so a workflow the person can see
+    /// is one save and remove can always reach.
     fn files_storing(&self, id: &str) -> Result<Vec<PathBuf>, AiError> {
         let mut paths = Vec::new();
         let entries = fs::read_dir(&self.dir).map_err(|_| {
             AiError::new(ErrorKind::Internal, "could not read the workflow directory")
         })?;
         for path in entries.flatten().map(|e| e.path()) {
-            if path.extension().is_none_or(|e| e != EXTENSION) {
+            if !is_workflow_file(&path) {
                 continue;
             }
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                continue;
-            };
+            let stem = workflow_stem(&path);
             let Ok(bytes) = read_bounded(&path) else {
                 continue;
             };
@@ -427,6 +424,22 @@ impl WorkflowLibrary {
         }
         Ok(paths)
     }
+}
+
+/// Whether a directory entry is a stored workflow: only `json` files are, everywhere the
+/// library looks. Loading, saving and removing must all agree on what the library contains —
+/// a file this rejects is never shown, so it must never be reconciled away either.
+fn is_workflow_file(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e == EXTENSION)
+}
+
+/// The stem a stored file is parsed under. A name that is not UTF-8 — possible on unix
+/// filesystems — falls back to `workflow`, so a file with an explicit id inside still loads,
+/// and still counts as the workflow it names for save and remove.
+fn workflow_stem(path: &Path) -> &str {
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("workflow")
 }
 
 /// The file name a workflow id is stored under. A model id may contain `/`, `:` and `.` and is
