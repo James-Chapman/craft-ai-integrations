@@ -458,13 +458,14 @@ COMFY = 'craft-ai-comfyui'
 WF_LIBRARY = C + 'ai-comfyui/src/library.rs'
 # The workflow library keeps stored file names inside the library directory whatever the id
 # holds (ids are model ids and may contain `/`, `:` and `.`), keeps distinct ids distinct, and
-# saves/removes a workflow by its stored id whatever file it arrived in.
+# saves/removes a workflow by its stored id among the library's json files only.
 WF = [
     ('library-file-name-not-derived', WF_LIBRARY, 'let path = self.dir.join(file_name(&id)).with_extension(EXTENSION);', 'let path = self.dir.join(&id).with_extension(EXTENSION);', COMFY, 'library', 'escape_the_library'),
     ('library-id-not-cleaned', WF_LIBRARY, "if c.is_ascii_alphanumeric() || c == '-' {", 'if true {', COMFY, 'library', 'escape_the_library'),
     ('library-hash-dropped', WF_LIBRARY, 'format!("{clean}-{hash:016x}")', 'format!("{clean}")', COMFY, 'library', 'stay_distinct'),
     ('library-save-leaves-legacy-file', WF_LIBRARY, 'if stale != path && fs::remove_file(&stale).is_err() {', 'if false && stale != path && fs::remove_file(&stale).is_err() {', COMFY, 'library', 'legacy'),
     ('library-remove-misses-legacy', WF_LIBRARY, 'let _ = fs::remove_file(&path);', 'let _ = &path;', COMFY, 'library', 'legacy'),
+    ('library-reconciles-non-json', WF_LIBRARY, 'if path.extension().is_none_or(|e| e != EXTENSION) {', 'if false {', COMFY, 'library', 'non_json'),
 ]
 GROUPS = {'lg': LG, 'ps': PS, 'ct': CT, 'u2': U2, 'nr': NR, 'u1': U1, 'u3': U3, 'u4': U4, 'p4': P4, 'p10': P10, 'v1': V1, 'v2': V2, 'v3': V3, 'sd': SD, 'lc': LC, 'lr': LR, 'wf': WF}
 # Mutants whose effect is also refused by a second, independent check on this machine. They are

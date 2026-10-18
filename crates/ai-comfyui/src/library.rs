@@ -367,11 +367,14 @@ impl WorkflowLibrary {
         let json = serde_json::to_vec(spec)
             .map_err(|_| AiError::new(ErrorKind::Internal, "could not encode the workflow"))?;
         let path = self.dir.join(file_name(&id)).with_extension(EXTENSION);
+        // Scan before writing: a library that cannot be scanned is not one to change, and the
+        // scan's failure must not hide that the previous file was never replaced.
+        let stale = self.files_storing(&id)?;
         fs::write(&path, &json)
             .map_err(|_| AiError::new(ErrorKind::Internal, "could not write the workflow file"))?;
         // One workflow per id, whatever file it arrived in. Damaged and foreign files that
         // cannot be parsed are left alone.
-        for stale in self.files_storing(&id) {
+        for stale in stale {
             if stale != path && fs::remove_file(&stale).is_err() {
                 return Err(AiError::new(
                     ErrorKind::Internal,
@@ -382,27 +385,34 @@ impl WorkflowLibrary {
         Ok(())
     }
 
-    /// Deletes one workflow file, whatever name it was stored under. Missing is fine.
+    /// Deletes one workflow file, whatever name it was stored under. Missing is fine — an
+    /// unreadable library is left untouched, not reported, like a missing file.
     pub fn remove(&self, id: &str) -> Result<(), AiError> {
         let id = craft_ai_core::ModelId::new(id)
             .map_err(|_| AiError::new(ErrorKind::InvalidRequest, "workflow id is not usable"))?
             .as_str()
             .to_owned();
-        for path in self.files_storing(&id) {
+        let Ok(paths) = self.files_storing(&id) else {
+            return Ok(());
+        };
+        for path in paths {
             let _ = fs::remove_file(&path);
         }
         Ok(())
     }
 
-    /// Every file in the library that stores the workflow `id`, whatever its file name —
+    /// Every `json` file in the library that stores the workflow `id`, whatever its file name —
     /// including files named `{id}.json` before ids stopped being file names. Paths are only
     /// ever taken from the directory listing, never built from the id.
-    fn files_storing(&self, id: &str) -> Vec<PathBuf> {
+    fn files_storing(&self, id: &str) -> Result<Vec<PathBuf>, AiError> {
         let mut paths = Vec::new();
-        let Ok(entries) = fs::read_dir(&self.dir) else {
-            return paths;
-        };
+        let entries = fs::read_dir(&self.dir).map_err(|_| {
+            AiError::new(ErrorKind::Internal, "could not read the workflow directory")
+        })?;
         for path in entries.flatten().map(|e| e.path()) {
+            if path.extension().is_none_or(|e| e != EXTENSION) {
+                continue;
+            }
             let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
                 continue;
             };
@@ -415,7 +425,7 @@ impl WorkflowLibrary {
                 paths.push(path);
             }
         }
-        paths
+        Ok(paths)
     }
 }
 

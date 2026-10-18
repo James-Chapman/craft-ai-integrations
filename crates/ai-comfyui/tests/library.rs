@@ -399,6 +399,43 @@ fn ids_that_share_a_cleaned_prefix_stay_distinct() {
 }
 
 #[test]
+fn non_json_files_are_not_workflows_even_when_they_hold_one() {
+    let (lib, dir) = library();
+    // A file the library never shows — load_specs only reads `json` files — but that
+    // happens to contain a valid workflow, stored under the id reconcile would look for.
+    let notes = path_in(&dir, "notes.txt");
+    fs::write(
+        &notes,
+        json!({
+            "id":"legacy",
+            "capability":"image.generate",
+            "graph":graph("original"),
+            "prompt":{"node":"1","class_type":"CLIPTextEncode","input":"text"},
+            "output_node":"2"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    assert!(
+        lib.load().unwrap().is_empty(),
+        "a non-json file must not load as a workflow"
+    );
+    lib.remove("legacy").unwrap();
+    assert!(notes.exists(), "remove deleted a file it never showed");
+    lib.save(&spec("legacy")).unwrap();
+    assert!(notes.exists(), "save tidied away a file it never showed");
+}
+
+#[test]
+fn remove_stays_quiet_when_the_directory_cannot_be_read() {
+    let (lib, dir) = library();
+    fs::remove_dir_all(dir.path().join("workflows")).unwrap();
+    // Missing is fine: an unreadable directory is not an error, nothing is deleted
+    // and remove keeps its best-effort contract.
+    lib.remove("anything").unwrap();
+}
+
+#[test]
 fn a_spec_with_an_unknown_capability_is_refused() {
     let err = WorkflowSpec::import(
         "weird",
