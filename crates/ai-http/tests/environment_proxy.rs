@@ -11,16 +11,18 @@ const MARKER: &str = "CRAFT_AI_PROXY_TEST_CHILD";
 fn the_environments_proxy_reaches_hosted_bases_but_not_loopback_ones() {
     if std::env::var_os(MARKER).is_some() {
         // The child: ALL_PROXY names a proxy, and NO_PROXY cannot exempt anything.
-        std::process::exit(if craft_ai_http::loopback_proxy().is_none()
-            && craft_ai_http::hosted_proxy().is_some()
-            && craft_ai_http::proxy_for("http://127.0.0.1:8188").is_none()
-            && craft_ai_http::proxy_for("http://localhost:11434/v1").is_none()
-            && craft_ai_http::proxy_for("https://api.example.com/v1").is_some()
-        {
-            0
-        } else {
-            1
-        });
+        std::process::exit(
+            if craft_ai_http::loopback_proxy().is_none()
+                && craft_ai_http::hosted_proxy().is_some()
+                && craft_ai_http::proxy_for("http://127.0.0.1:8188").is_none()
+                && craft_ai_http::proxy_for("http://localhost:11434/v1").is_none()
+                && craft_ai_http::proxy_for("https://api.example.com/v1").is_some()
+            {
+                0
+            } else {
+                1
+            },
+        );
     }
     let exe = std::env::current_exe().expect("this test binary exists");
     let status = std::process::Command::new(exe)

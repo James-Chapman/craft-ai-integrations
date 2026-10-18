@@ -153,9 +153,9 @@ impl MediaStore {
                     .proxy(craft_ai_http::hosted_proxy())
                     .build()
             };
-            let response = request.call().map_err(|_| {
-                AiError::new(ErrorKind::Network, "could not download the media")
-            })?;
+            let response = request
+                .call()
+                .map_err(|_| AiError::new(ErrorKind::Network, "could not download the media"))?;
             let status = response.status().as_u16();
             if (300..400).contains(&status) {
                 hops += 1;

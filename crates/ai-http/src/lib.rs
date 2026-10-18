@@ -26,8 +26,8 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use craft_ai_core::endpoint::Endpoint;
-use ureq::tls::{RootCerts, TlsConfig};
 use ureq::Proxy;
+use ureq::tls::{RootCerts, TlsConfig};
 
 /// The TLS setting for an agent: certificates are checked by the platform's own verifier.
 ///

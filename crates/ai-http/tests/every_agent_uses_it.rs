@@ -80,8 +80,7 @@ fn every_agent_uses_the_shared_settings() {
 #[test]
 fn the_scan_recognises_a_site_with_and_without_the_settings() {
     let good = "let c = ureq::Agent::config_builder()\n    .tls_config(craft_ai_http::tls_config())\n    .proxy(craft_ai_http::hosted_proxy())\n    .build();";
-    let no_tls =
-        "let c = ureq::Agent::config_builder()\n    .proxy(craft_ai_http::hosted_proxy())\n    .build();";
+    let no_tls = "let c = ureq::Agent::config_builder()\n    .proxy(craft_ai_http::hosted_proxy())\n    .build();";
     let no_proxy = "let c = ureq::Agent::config_builder()\n    .tls_config(craft_ai_http::tls_config())\n    .timeout_global(None)\n    .build();";
     for (label, text, ok) in [
         ("both settings", good, true),
