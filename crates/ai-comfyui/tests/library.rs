@@ -435,6 +435,38 @@ fn remove_stays_quiet_when_the_directory_cannot_be_read() {
     lib.remove("anything").unwrap();
 }
 
+#[cfg(target_family = "unix")]
+#[test]
+fn remove_reaches_a_file_whose_name_is_not_utf8() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+    let (lib, dir) = library();
+    // A name a unix filesystem accepts but `to_str` refuses; the id inside decides what it is.
+    let file = dir
+        .path()
+        .join("workflows")
+        .join(OsString::from_vec(b"bad\xff.json".to_vec()));
+    fs::write(
+        &file,
+        json!({
+            "id":"legacy",
+            "capability":"image.generate",
+            "graph":graph("original"),
+            "prompt":{"node":"1","class_type":"CLIPTextEncode","input":"text"},
+            "output_node":"2"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        lib.load().unwrap().len(),
+        1,
+        "the non-utf8-named file does not load"
+    );
+    lib.remove("legacy").unwrap();
+    assert!(!file.exists(), "remove missed the non-utf8-named file");
+}
+
 #[test]
 fn a_spec_with_an_unknown_capability_is_refused() {
     let err = WorkflowSpec::import(
