@@ -427,6 +427,25 @@ fn non_json_files_are_not_workflows_even_when_they_hold_one() {
 }
 
 #[test]
+fn save_refuses_when_the_directory_cannot_be_read() {
+    let (lib, dir) = library();
+    lib.save(&spec("early")).unwrap();
+    fs::remove_dir_all(dir.path().join("workflows")).unwrap();
+    // The scan fails before anything is written: the error names the scan, not the write,
+    // and nothing recreates the directory — `at` created it, not `save`.
+    let err = lib.save(&spec("later")).unwrap_err();
+    assert!(
+        err.message
+            .contains("could not read the workflow directory"),
+        "{err}"
+    );
+    assert!(
+        !dir.path().join("workflows").exists(),
+        "save recreated the directory it refused to scan"
+    );
+}
+
+#[test]
 fn remove_stays_quiet_when_the_directory_cannot_be_read() {
     let (lib, dir) = library();
     fs::remove_dir_all(dir.path().join("workflows")).unwrap();

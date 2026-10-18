@@ -467,6 +467,7 @@ WF = [
     ('library-remove-misses-legacy', WF_LIBRARY, 'let _ = fs::remove_file(&path);', 'let _ = &path;', COMFY, 'library', 'legacy'),
     ('library-reconciles-non-json', WF_LIBRARY, 'if !is_workflow_file(&path) {', 'if false {', COMFY, 'library', 'non_json'),
     ('library-save-overwrites-foreign-workflow', WF_LIBRARY, 'if path.exists() && !stale.iter().any(|existing| existing == &path) {', 'if false && path.exists() && !stale.iter().any(|existing| existing == &path) {', COMFY, 'library', 'another_workflow'),
+    ('library-save-ignores-scan-failure', WF_LIBRARY, 'let stale = self.files_storing(&id)?;', 'let stale = self.files_storing(&id).unwrap_or_default();', COMFY, 'library', 'save_refuses_when_the_directory'),
 ]
 GROUPS = {'lg': LG, 'ps': PS, 'ct': CT, 'u2': U2, 'nr': NR, 'u1': U1, 'u3': U3, 'u4': U4, 'p4': P4, 'p10': P10, 'v1': V1, 'v2': V2, 'v3': V3, 'sd': SD, 'lc': LC, 'lr': LR, 'wf': WF}
 # Mutants whose effect is also refused by a second, independent check on this machine. They are

@@ -425,7 +425,17 @@ impl WorkflowLibrary {
         let entries = fs::read_dir(&self.dir).map_err(|_| {
             AiError::new(ErrorKind::Internal, "could not read the workflow directory")
         })?;
-        for path in entries.flatten().map(|e| e.path()) {
+        for entry in entries {
+            // An entry that cannot be produced is the listing failing partway. A partial
+            // scan must never drive a mutation — save would leave the missed copies behind
+            // and remove would report success while skipping them — so it is the same
+            // failure as the directory not being readable at all. Unreadable or damaged
+            // files stay skippable: one bad file is not a broken listing.
+            let path = entry
+                .map_err(|_| {
+                    AiError::new(ErrorKind::Internal, "could not read the workflow directory")
+                })?
+                .path();
             if !is_workflow_file(&path) {
                 continue;
             }
