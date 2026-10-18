@@ -170,7 +170,7 @@ fn a_second_import_with_the_same_id_replaces_the_first() {
 
 #[test]
 fn remove_deletes_the_file_and_only_that_file() {
-    let (lib, dir) = library();
+    let (lib, _dir) = library();
     lib.save(&spec("keep")).unwrap();
     lib.save(&spec("drop")).unwrap();
     lib.remove("keep").unwrap();
@@ -181,7 +181,14 @@ fn remove_deletes_the_file_and_only_that_file() {
         .map(|w| w.id().as_str().to_owned())
         .collect();
     assert_eq!(ids, ["drop"]);
-    assert!(!path_in(&dir, "keep.json").exists());
+    // What remains in the directory is the one file that was kept, under its derived name.
+    let mut remaining: Vec<String> = fs::read_dir(lib.dir())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    remaining.sort();
+    assert_eq!(remaining.len(), 1);
+    assert!(remaining[0].ends_with(".json"));
 }
 
 #[test]
@@ -190,7 +197,14 @@ fn the_library_directory_is_created_on_demand() {
     let target = dir.path().join("nested").join("workflows");
     let lib = WorkflowLibrary::at(&target).unwrap();
     lib.save(&spec("fresh")).unwrap();
-    assert!(target.join("fresh.json").exists());
+    // The file lands under a derived name, so the directory is checked, not one path.
+    let mut names: Vec<String> = fs::read_dir(&target)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names.len(), 1);
+    assert!(names[0].ends_with(".json"));
     assert_eq!(lib.load().unwrap().len(), 1);
 }
 
@@ -237,6 +251,77 @@ fn workflow_specs_round_trip_through_the_library_file() {
             .unwrap()["1"]["inputs"]["text"],
         "checked"
     );
+}
+
+#[test]
+fn hostile_ids_cannot_escape_the_library_directory() {
+    let (lib, dir) = library();
+    // A file just outside the library directory that a traversal id must not touch.
+    let canary = dir.path().join("connections.json");
+    fs::write(&canary, "keep").unwrap();
+    for id in ["../connections", "C:/evil", "a/b", "."] {
+        lib.save(&spec(id)).unwrap();
+    }
+    assert_eq!(
+        fs::read_to_string(&canary).unwrap(),
+        "keep",
+        "an id escaped the library directory"
+    );
+    // Everything written stays inside the library, under plain file names.
+    for entry in fs::read_dir(lib.dir()).unwrap() {
+        let file_name = entry.unwrap().file_name();
+        let name = file_name.to_string_lossy();
+        assert!(!name.contains('/'), "name escaped into a folder: {name}");
+        assert!(
+            !name.starts_with('.'),
+            "name escaped into a dotfile: {name}"
+        );
+    }
+    // The raw ids survive inside the files: the graph still loads under each of them.
+    let ids: Vec<String> = lib
+        .load()
+        .unwrap()
+        .iter()
+        .map(|w| w.id().as_str().to_owned())
+        .collect();
+    for id in ["../connections", "C:/evil", "a/b", "."] {
+        assert!(ids.contains(&id.to_owned()), "{id} did not survive");
+    }
+}
+
+#[test]
+fn ids_that_clean_alike_stay_distinct() {
+    let (lib, _dir) = library();
+    // `a/b` and `a.b` both clean to `a_b`; the file name must still tell them apart.
+    lib.save(&spec("a/b")).unwrap();
+    lib.save(&spec("a.b")).unwrap();
+    let ids: Vec<String> = lib
+        .load()
+        .unwrap()
+        .iter()
+        .map(|w| w.id().as_str().to_owned())
+        .collect();
+    assert!(ids.contains(&"a/b".to_owned()), "a/b was lost");
+    assert!(ids.contains(&"a.b".to_owned()), "a.b was lost");
+    assert_eq!(ids.len(), 2);
+}
+
+#[test]
+fn remove_only_reaches_files_inside_the_library() {
+    let (lib, dir) = library();
+    // A file just outside the library directory that a traversal id must not delete.
+    let canary = dir.path().join("evil.json");
+    fs::write(&canary, "keep").unwrap();
+    lib.remove("../evil").unwrap();
+    assert_eq!(
+        fs::read_to_string(&canary).unwrap(),
+        "keep",
+        "remove reached outside the library directory"
+    );
+    // A saved workflow really is removed by its raw id.
+    lib.save(&spec("gone")).unwrap();
+    lib.remove("gone").unwrap();
+    assert!(lib.load().unwrap().is_empty());
 }
 
 #[test]

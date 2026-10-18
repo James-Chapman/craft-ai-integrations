@@ -6,7 +6,7 @@ source back. A case is CAUGHT only if the mutated code compiled and the test run
 does not compile counts as NOT CAUGHT (a bad mutant), so every survivor is either a test gap or a
 mutant to fix. Cargo runs serially, targeted with -p, with -j 8.
 
-Usage: mutation_check.py u1|u3|u4|p4|p10|v1|v2|v3|sd|lc|lr|nr|ct|u2 [name-substring]
+Usage: mutation_check.py u1|u3|u4|p4|p10|v1|v2|v3|sd|lc|lr|nr|ct|u2|wf [name-substring]
 Saved logs pass through scrub.py so no Windows account name is written. Run it from anywhere;
 logs land in tools/mutation/verification/, which is not committed.
 """
@@ -454,7 +454,17 @@ LG = [
     ('damage-found-only-after-download', LG_IN, 'self.registry.list().map_err(|_| Refusal::Record)?;', '', E, LGT, 'damaged_record'),
     ('install-forgets-the-yes', LG_IN, 'if candidate.licence.accept_required && consents.licence {', 'if false {', E, LGT, 'outlives_the_file'),
 ]
-GROUPS = {'lg': LG, 'ps': PS, 'ct': CT, 'u2': U2, 'nr': NR, 'u1': U1, 'u3': U3, 'u4': U4, 'p4': P4, 'p10': P10, 'v1': V1, 'v2': V2, 'v3': V3, 'sd': SD, 'lc': LC, 'lr': LR}
+COMFY = 'craft-ai-comfyui'
+WF_LIBRARY = C + 'ai-comfyui/src/library.rs'
+# The workflow library keeps stored file names inside the library directory whatever the id
+# holds (ids are model ids and may contain `/`, `:` and `.`), and keeps distinct ids distinct.
+WF = [
+    ('library-file-name-not-derived', WF_LIBRARY, 'let path = self.dir.join(file_name(&id)).with_extension(EXTENSION);', 'let path = self.dir.join(&id).with_extension(EXTENSION);', COMFY, 'library', 'escape_the_library'),
+    ('library-remove-not-derived', WF_LIBRARY, 'let _ = fs::remove_file(self.dir.join(file_name(&id)).with_extension(EXTENSION));', 'let _ = fs::remove_file(self.dir.join(&id).with_extension(EXTENSION));', COMFY, 'library', 'remove_only_reaches'),
+    ('library-id-not-cleaned', WF_LIBRARY, "if c.is_ascii_alphanumeric() || c == '-' {", 'if true {', COMFY, 'library', 'escape_the_library'),
+    ('library-hash-dropped', WF_LIBRARY, 'format!("{clean}-{hash:08x}")', 'format!("{clean}")', COMFY, 'library', 'clean_alike_stay_distinct'),
+]
+GROUPS = {'lg': LG, 'ps': PS, 'ct': CT, 'u2': U2, 'nr': NR, 'u1': U1, 'u3': U3, 'u4': U4, 'p4': P4, 'p10': P10, 'v1': V1, 'v2': V2, 'v3': V3, 'sd': SD, 'lc': LC, 'lr': LR, 'wf': WF}
 # Mutants whose effect is also refused by a second, independent check on this machine. They are
 # recorded as equivalent here, with the reason, and are never counted as caught.
 EQUIVALENT = {

@@ -3,7 +3,9 @@
 //! The launcher (or an app's Preferences) copies or writes a workflow file into the library
 //! directory; every ComfyUI connection built from the same directory sees the same workflows.
 //! Nothing is inferred from a file name beyond a derived id; the graph, the prompt binding and
-//! the output node are stored inside each file and re-validated on every load.
+//! the output node are stored inside each file and re-validated on every load. Stored file
+//! names are derived safely ([`file_name`]): an id may contain `/`, `:` and `.` (it is a model
+//! id, not a file name), and still cannot name a file outside the library directory.
 //!
 //! File shape (all fields except `graph` optional; see [`WorkflowSpec::import`]):
 //!
@@ -363,7 +365,7 @@ impl WorkflowLibrary {
             .to_owned();
         let json = serde_json::to_vec(spec)
             .map_err(|_| AiError::new(ErrorKind::Internal, "could not encode the workflow"))?;
-        let path = self.dir.join(format!("{id}.{EXTENSION}"));
+        let path = self.dir.join(file_name(&id)).with_extension(EXTENSION);
         fs::write(&path, &json)
             .map_err(|_| AiError::new(ErrorKind::Internal, "could not write the workflow file"))
     }
@@ -374,9 +376,33 @@ impl WorkflowLibrary {
             .map_err(|_| AiError::new(ErrorKind::InvalidRequest, "workflow id is not usable"))?
             .as_str()
             .to_owned();
-        let _ = fs::remove_file(self.dir.join(format!("{id}.{EXTENSION}")));
+        let _ = fs::remove_file(self.dir.join(file_name(&id)).with_extension(EXTENSION));
         Ok(())
     }
+}
+
+/// The file name a workflow id is stored under. A model id may contain `/`, `:` and `.` and is
+/// not a file name; the readable part is cleaned to characters that cannot escape the library
+/// directory, and a hash of the exact id is appended so ids that clean alike (such as `a/b` and
+/// `a.b`) stay distinct. The id itself travels inside the file. Same shape as
+/// `ai-native`'s consent `file_name`.
+fn file_name(id: &str) -> String {
+    let clean: String = id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(40)
+        .collect();
+    let mut hash: u32 = 0x811c_9dc5;
+    for b in id.bytes() {
+        hash = (hash ^ u32::from(b)).wrapping_mul(0x0100_0193);
+    }
+    format!("{clean}-{hash:08x}")
 }
 
 fn read_bounded(path: &Path) -> Result<Vec<u8>, AiError> {
