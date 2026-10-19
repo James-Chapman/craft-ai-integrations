@@ -401,6 +401,7 @@ fn cancel_passes_the_conformance_check_on_a_slow_stream() {
     .unwrap();
 }
 
+/// Cancelling mid-stream stops the worker at its next line and drops the connection.
 #[test]
 fn cancelling_mid_stream_closes_the_connection() {
     let server = slow_stream_server();
@@ -433,6 +434,7 @@ fn cancelling_mid_stream_closes_the_connection() {
     }
 }
 
+/// An unpollled flood fails the job at the event cap, and the worker drops the connection.
 #[test]
 fn an_unpolled_firehose_fails_the_job_and_closes_the_stream() {
     // A hostile server streams at full speed for as long as the request timeout allows, and
@@ -470,6 +472,7 @@ fn an_unpolled_firehose_fails_the_job_and_closes_the_stream() {
     assert!(snap.events.is_empty());
 }
 
+/// A redirect is never followed, so the key cannot be forwarded to another host.
 #[test]
 fn redirects_are_not_followed_so_the_key_cannot_be_forwarded() {
     let elsewhere = Server::start(|_| Reply::Json(200, completion("stolen")));

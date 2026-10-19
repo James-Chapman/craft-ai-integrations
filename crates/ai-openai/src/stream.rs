@@ -36,6 +36,7 @@ pub(crate) struct SseState {
 }
 
 impl Default for SseState {
+    /// The full-size cap; only a test shrinks it.
     fn default() -> Self {
         Self {
             text: String::new(),
@@ -120,6 +121,7 @@ impl SseState {
         Ok(out)
     }
 
+    /// Appends one tool-call fragment to its slot, ignoring a hostile index.
     fn tool_delta(&mut self, call: &Value) {
         let index = call
             .get("index")
@@ -162,6 +164,7 @@ impl SseState {
 mod tests {
     use super::*;
 
+    /// Text, tool calls, usage and the end markers all accumulate from whole lines.
     #[test]
     fn sse_accumulates_text_tools_and_usage() {
         let mut s = SseState::default();
@@ -190,6 +193,7 @@ mod tests {
         assert_eq!(c.usage.unwrap().input_units, Some(2));
     }
 
+    /// Broken events, streamed errors and hostile indices are refused or ignored, not panics.
     #[test]
     fn sse_errors_and_garbage_are_errors_not_panics() {
         let mut s = SseState::default();
@@ -204,6 +208,7 @@ mod tests {
         assert!(s.into_completion().tool_calls.is_empty());
     }
 
+    /// A stream past its total is refused, not grown; text and tool arguments share one cap.
     #[test]
     fn a_stream_past_its_total_is_refused_not_grown() {
         // The stream may never keep more than a whole reply could hold: the same cap as

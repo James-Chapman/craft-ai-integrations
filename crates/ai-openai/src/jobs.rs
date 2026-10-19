@@ -76,6 +76,8 @@ impl JobCell {
         }
     }
 
+    /// Adds an event for the next poll; a backlog that passes [`MAX_EVENTS`] fails the job
+    /// rather than grows while nobody reads it.
     pub fn push(&self, event: Event) {
         let mut g = self.lock();
         if g.state.is_terminal() {
@@ -96,6 +98,7 @@ impl JobCell {
         g.events.push(event);
     }
 
+    /// Marks the job Succeeded with its usage, unless it already ended.
     fn succeed(&self, usage: Option<Usage>) {
         let mut g = self.lock();
         if !g.state.is_terminal() {
@@ -221,6 +224,7 @@ fn run_image(http: &Http, cell: &JobCell, p: &ImagePlan) -> Result<Option<Usage>
     Ok(usage)
 }
 
+/// Posts one chat request, whole or streamed, and turns the reply into events.
 fn run_chat(http: &Http, cell: &JobCell, p: &ChatPlan) -> Result<Option<Usage>, AiError> {
     let body = serde_json::to_vec(&p.body)
         .map_err(|_| AiError::new(ErrorKind::Internal, "could not encode the request"))?;
@@ -337,6 +341,7 @@ mod tests {
         assert!(matches!(f.snapshot().state, JobState::Failed { .. }));
     }
 
+    /// `start` moves a Queued job to Running once; later starts change nothing.
     #[test]
     fn start_moves_queued_to_running_once() {
         let c = JobCell::new();
@@ -348,6 +353,7 @@ mod tests {
         assert_eq!(c.snapshot().state, JobState::Succeeded);
     }
 
+    /// A backlog past the cap fails the job and is dropped; one at the cap survives a poll.
     #[test]
     fn an_event_backlog_past_the_cap_fails_the_job() {
         // 65_536 is MAX_EVENTS, written out so that loosening the cap fails this test.
