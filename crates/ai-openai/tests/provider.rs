@@ -438,9 +438,15 @@ fn an_unpolled_firehose_fails_the_job_and_closes_the_stream() {
     // A hostile server streams at full speed for as long as the request timeout allows, and
     // nobody polls. The job must fail once its backlog passes the cap (65_536, MAX_EVENTS in
     // jobs.rs) and the worker must stop reading and drop the connection, not keep the stream
-    // open and the thread busy until the timeout. 70_000 deltas is past the cap but far from
-    // the byte total a reply may hold, so only the event cap ends this.
-    let flood: Vec<Step> = (0..70_000)
+    // open and the thread busy until the timeout.
+    // The flood must leave far more unread than kernel socket buffers can swallow when the
+    // worker stops: the server only reports the drop when a write fails, so if everything it
+    // still holds (a million minus the 65_537 lines read, about 44 MB) could drain into the
+    // kernel, the server would finish writing and never notice. 70_000 events left about
+    // 210 KB and lost that race on CI (Linux autotunes its buffers into the megabytes). The
+    // byte total kept stays far under the stream cap: each line holds one byte of text, and
+    // only 65_537 lines are ever read.
+    let flood: Vec<Step> = (0..1_000_000)
         .map(|_| chunk(json!({"content": "x"})))
         .collect();
     let flood = std::sync::Mutex::new(Some(flood));
