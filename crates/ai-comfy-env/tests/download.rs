@@ -512,9 +512,19 @@ fn a_part_file_in_a_read_only_folder_is_named_and_left_alone() {
         vec![9u8; data.len() + 10],
     )
     .unwrap();
-    // A folder without write permission refuses deletion on Unix; restored afterwards
-    // so the temporary folder cleans up. (Not proof against a root run, which
-    // bypasses permission bits.)
+    // A folder without write permission refuses deletion on Unix - except for a root
+    // process, which bypasses permission bits. Probe with a separate folder and skip
+    // where the premise does not hold, rather than fail there. The folder is restored
+    // afterwards so the temporary folder cleans up.
+    let probe_dir = tempfile::tempdir().unwrap();
+    std::fs::write(probe_dir.path().join("probe"), b"x").unwrap();
+    std::fs::set_permissions(probe_dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+    let read_only_refuses_deletion = std::fs::remove_file(probe_dir.path().join("probe")).is_err();
+    std::fs::set_permissions(probe_dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+    if !read_only_refuses_deletion {
+        eprintln!("skipped: this process deletes from a read-only folder");
+        return;
+    }
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
     unclearable_part_check(&data, dir.path(), &server);
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
