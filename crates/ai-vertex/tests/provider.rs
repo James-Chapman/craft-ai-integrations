@@ -47,6 +47,31 @@ fn image_generation_uses_express_key_and_returns_inline_image() {
 }
 
 #[test]
+fn submit_refuses_other_models_and_options_before_any_call() {
+    // A wrong model and every unsupported option are refused on the caller's thread,
+    // before a request could leave: the server is never contacted (count stays 0).
+    let s = Server::start(|_| Reply::Json(200, "{}".into()));
+    let p = VertexProvider::new(VertexConfig::new(
+        s.url.clone(),
+        SecretString::new("needle-secret"),
+    ))
+    .unwrap();
+    let model = ModelId::new("gemini-2.5-flash-image").unwrap();
+    let plain = Request::new(CapabilityId::parse("image.generate").unwrap())
+        .with_input(InputRole::Prompt, Payload::text("a fox"));
+    let cases = [
+        (ModelId::new("gemini-2.0-flash").unwrap(), plain.clone()),
+        (model.clone(), plain.clone().streaming()),
+        (model.clone(), plain.clone().with_outputs(2)),
+        (model, plain.with_param("temperature", json!(0.5))),
+    ];
+    for (m, r) in cases {
+        assert_eq!(p.submit(&m, &r).unwrap_err().kind, ErrorKind::Unsupported);
+        assert_eq!(s.count(), 0);
+    }
+}
+
+#[test]
 fn refuses_unsupported_before_paid_call_and_never_follows_redirects() {
     let s = Server::start(|_| {
         Reply::JsonWith(
