@@ -434,6 +434,37 @@ fn cancelling_mid_stream_closes_the_connection() {
 }
 
 #[test]
+fn an_unpolled_firehose_fails_the_job_and_closes_the_stream() {
+    // A hostile server streams at full speed for as long as the request timeout allows, and
+    // nobody polls. The job must fail once its backlog passes the cap (65_536, MAX_EVENTS in
+    // jobs.rs) and the worker must stop reading and drop the connection, not keep the stream
+    // open and the thread busy until the timeout. 70_000 deltas is past the cap but far from
+    // the byte total a reply may hold, so only the event cap ends this.
+    let flood: Vec<Step> = (0..70_000)
+        .map(|_| chunk(json!({"content": "x"})))
+        .collect();
+    let flood = std::sync::Mutex::new(Some(flood));
+    let server =
+        Server::start(move |_| Reply::Sse(flood.lock().unwrap().take().unwrap_or_default()));
+    let p = provider(&server.url);
+    let job = p.submit(&model("gpt-4o"), &text_req().streaming()).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !server
+        .client_dropped
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the worker never dropped the firehose"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let snap = p.poll(&job).unwrap();
+    assert_eq!(failed(&snap.state).kind, ErrorKind::Provider);
+    assert!(snap.events.is_empty());
+}
+
+#[test]
 fn redirects_are_not_followed_so_the_key_cannot_be_forwarded() {
     let elsewhere = Server::start(|_| Reply::Json(200, completion("stolen")));
     let target = format!("{}/chat/completions", elsewhere.url);
